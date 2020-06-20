@@ -127,3 +127,17 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Database and storage files
+.db
+.pkl
+.lp
+.sol
+
+# Wing IDE
+.wpr
+.wpu
+
+# Some specific files to ignore
+Jupyter/scratch.ipynb
+Jupyter/KG-test.ipynb
