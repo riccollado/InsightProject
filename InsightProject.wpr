@@ -1,0 +1,46 @@
+#!wing
+#!version=7.0
+##################################################################
+# Wing project file                                              #
+##################################################################
+[project attributes]
+console.toolbox = [{'autosave': False,
+                    'id': 'cmd-n5KmNQsKYK6EJLrW',
+                    'io_encoding': None,
+                    'key_binding': None,
+                    'line_mode': True,
+                    'loc': u'C:\\Users\\Ricardo\\Dropbox\\Current Work\\Insight\\Work\\final\\optimize.py',
+                    'pseudo_tty': False,
+                    'raise_panel': True,
+                    'shared': False,
+                    'title': None},
+                   {'autosave': False,
+                    'id': 'cmd-fxgwym8fwWWNGdgE',
+                    'io_encoding': None,
+                    'key_binding': None,
+                    'line_mode': True,
+                    'loc': u'C:\\Users\\Ricardo\\Dropbox\\Current Work\\Insight\\Work\\final\\Test\\KG-test.py',
+                    'pseudo_tty': False,
+                    'raise_panel': True,
+                    'shared': False,
+                    'title': None}]
+proj.directory-list = [{'dirloc': loc('.'),
+                        'excludes': [u'R.png',
+                                     u'RUNS',
+                                     u'Histogram_Learning_Sequence.ipynb',
+                                     u'scratch.ipynb',
+                                     u'ML.png',
+                                     u'.ipynb_checkpoints',
+                                     u'KG-test.ipynb',
+                                     u'TestNotebook.ipynb',
+                                     u'Test',
+                                     u'beta_test.ipynb',
+                                     u'R_1.png',
+                                     u'Not Used',
+                                     u'NetworkFigure.ipynb'],
+                        'filter': '*',
+                        'include_hidden': False,
+                        'recursive': True,
+                        'watch_for_changes': False}]
+proj.file-type = 'shared'
+proj.main-file = loc('optimize.py')
