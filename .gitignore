@@ -129,15 +129,16 @@ dmypy.json
 .pyre/
 
 # Database and storage files
-.db
-.pkl
-.lp
-.sol
+*.db
+*.pkl
+#*.lp
+#*.sol
 
 # Wing IDE
-.wpr
-.wpu
+*.wpr
+*.wpu
 
 # Some specific files to ignore
 Jupyter/scratch.ipynb
 Jupyter/KG-test.ipynb
+Jupyter/beta_test.ipynb
