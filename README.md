@@ -36,9 +36,21 @@ The branching strategies are described below:
 
 4. **Distance**: Branching decision obtained by forming the Pareto frontier of mean-variance pairs of each leaf and performing non-dominated sorting based on vector distance. The non-dominated sorting method is discussed [here](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=996017&casa_token=RX5FX8Ctu38AAAAA:BymQiux3DQammBgBVQANxxHhwDx5fhxT3FqRNB8nCvyND4WSajGqwvjyKNpISKO5aJj2akki&tag=1 "A Fast and Elitist Multiobjective Genetic Algorithm:").
 
-5. **Pareto\_Inverse**: Branching decision obtained by forming the Pareto frontier of mean-variance pairs of each leaf and performing non-dominated sorting based on inverse proportional probability: 
+5. **Pareto\_Inverse**: Branching decision obtained by forming the Pareto frontier of mean-variance pairs of each leaf and performing non-dominated sorting based on inverse proportional probability:
 
-6. **Pareto\_Boltzman**: Branching decision obtained by forming the Pareto frontier of mean-variance pairs of each leaf and performing non-dominated sorting based on inverse Boltzman probability:   
+<p>
+<img src="https://latex.codecogs.com/gif.latex?p_i&space;=&space;\frac{\left(1/i\right)^\beta}{\sum_{k=1}^{n}\left(1/k\right)^\beta}" title="p_i = \frac{\left(1/i\right)^\beta}{\sum_{k=1}^{n}\left(1/k\right)^\beta}", />
+</p>
+
+where <img src="https://latex.codecogs.com/gif.latex?\beta" title="\beta" /> is the Pareto front selection pressure, <img src="https://latex.codecogs.com/gif.latex?n" title="n" /> is the total number of fronts, <img src="https://latex.codecogs.com/gif.latex?s_i" title="s_i" /> is the total number of solutions in front of rank <img src="https://latex.codecogs.com/gif.latex?i" title="i" />, and <img src="https://latex.codecogs.com/gif.latex?\inline&space;\sum_{i=1}^n&space;s_ip_i&space;=&space;1" title="\sum_{i=1}^n s_ip_i = 1" />.
+
+6. **Pareto\_Boltzman**: Branching decision obtained by forming the Pareto frontier of mean-variance pairs of each leaf and performing non-dominated sorting based on inverse Boltzman probability:
+
+<p>
+<img src="https://latex.codecogs.com/gif.latex?p_i&space;=&space;\frac{e^{-\beta&space;i}}{\sum_{k=1}^n&space;s_k&space;e^{-\beta&space;k}}" title="p_i = \frac{e^{-\beta i}}{\sum_{k=1}^n s_k e^{-\beta k}}", />
+</p>
+
+where <img src="https://latex.codecogs.com/gif.latex?\beta" title="\beta" /> is the Pareto front selection pressure, <img src="https://latex.codecogs.com/gif.latex?n" title="n" /> is the total number of fronts, <img src="https://latex.codecogs.com/gif.latex?s_i" title="s_i" /> is the total number of solutions in front of rank <img src="https://latex.codecogs.com/gif.latex?i" title="i" />, and <img src="https://latex.codecogs.com/gif.latex?\inline&space;\sum_{i=1}^n&space;s_ip_i&space;=&space;1" title="\sum_{i=1}^n s_ip_i = 1" />.
 
 The application also stores every solution and iteration in a SQL database for later retrieval and statistical analysis.
 
