@@ -71,13 +71,18 @@ filename                          |  description
 README.md                         |  Text file (markdown format) description of the project.
 DB/*.sql                          |  Postgres SQL files for database table creation
 Output/*.jpg                      |  Output images (network and statistics).
+
+
 Python scripts files:
 
 filename                          |  description
 ----------------------------------|------------------------------------------------------------------------------------
 single_run.py                     |  Performs a single run of the method with specified parameters and randomly generated input data.
 multiple_run.py                   |  Performs a multiple runs of the methods with specified parameters and randomly generated input data.
+
+
 Python modules:
+
 
 filename                          |  description
 ----------------------------------|------------------------------------------------------------------------------------
