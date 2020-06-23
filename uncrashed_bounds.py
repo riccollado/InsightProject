@@ -1,11 +1,11 @@
 import gurobipy as gp
 
-def uncrashed_project_time(project_network, scenario, outlocation):
+def uncrashed_project_time(network, scenario):
     """Solves the uncrashed unpenalized scheduling problem on a single scenario
     
     Parameters
     ----------
-    project_network : networkx.classes.digraph.DiGraph
+    network : networkx.classes.digraph.DiGraph
        Network digraph
     scenario : list
        Single scenario of activity times    
@@ -18,7 +18,7 @@ def uncrashed_project_time(project_network, scenario, outlocation):
        Optimal solution
     """
     
-    no_of_nodes = len(project_network.nodes)
+    no_of_nodes = network.number_of_nodes()
     
     # Setting up the optimization problem
     model = gp.Model("BoundOptimizationProblem")
@@ -35,8 +35,8 @@ def uncrashed_project_time(project_network, scenario, outlocation):
     
     # Network flow model constraints
     constr = {}
-    for node in project_network.nodes:
-        successors = project_network.successors(node)
+    for node in network.nodes:
+        successors = network.successors(node)
         for succ in successors:
             #Debug
             #print("Adding constraint for {}->{}".format(node, succ))
@@ -47,15 +47,8 @@ def uncrashed_project_time(project_network, scenario, outlocation):
     model.setObjective(s[no_of_nodes - 1], gp.GRB.MINIMIZE)
     model.optimize()
     
-    # Debug
-    model.write(outlocation + "penaltymodel.lp")    
-    
     # Retrieve  solution
     ObjVal = model.getAttr('ObjVal')
     OptSol = [int(s[i].X) for i in range(no_of_nodes)]
-    
-    # Debug
-    #print("ObjVal = {}".format(ObjVal))
-    #print("OptSol = {}\n".format(OptSol))
     
     return(ObjVal, OptSol)

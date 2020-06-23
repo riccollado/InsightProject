@@ -1,17 +1,18 @@
 import math
-import sqlite3
-import utilities
+#import utilities
 import pygmo as pg
 import numpy as np
 import pandas as pd
 import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
-from KG import update_mu_S
-from KG import KG_multi
 from functools import partial
-from generator_subproblem import optimize_subproblem
 from jellyfish import levenshtein_distance as l_dist
 from statsmodels.stats.correlation_tools import cov_nearest
+
+from knowledge_gradient import update_mu_S
+from knowledge_gradient import KG_multi
+from generator_scenario import dynamic_scenarios
+from generator_subproblem import optimize_subproblem
 
 
 KG_leaf_counter = 0
@@ -23,9 +24,7 @@ def increment_lc():
    return KG_leaf_counter
 
 
-def initialize_common_attributes(pool, project_network, scenarios, crashtime, crashcost, t_init, t_final, 
-                                 outlocation, b, b2, alpha, experiment_id, conn, method, num_scenerios_per_estimation,
-                                 beta, pessimistic_duration, penalty_type, m, b1, KG_sigma, KG_l, bootstrap=True):
+def initialize_attributes(problem, method):
    """Initializes common attributes and parameters needed for SB&B algorithm
 
    Parameters
@@ -34,52 +33,77 @@ def initialize_common_attributes(pool, project_network, scenarios, crashtime, cr
 
    Returns
    ----------
-   attributes_dict : dict
+   attributes : dict
       Dictionary with keys: 
          pool, project_network, scenarios, crashtime, crashcost, t_init, t_final,
          outlocation, b, b2, alpha, experiment_id, conn, method, num_scenerios_per_estimation,
          beta, pessimistic_duration, penalty_type, m, b1
    """
-   attributes_dict = {}
-   attributes_dict['pool'] = pool
-   attributes_dict['project_network'] = project_network
-   attributes_dict['scenarios'] = scenarios
-   attributes_dict['crashtime'] = crashtime
-   attributes_dict['crashcost'] = crashcost
-   attributes_dict['t_init'] = t_init
-   attributes_dict['t_final'] = t_final
-   attributes_dict['outlocation'] = outlocation
-   attributes_dict['nodes'] = project_network.nodes
-   attributes_dict['no_of_nodes'] = len(project_network.nodes)
-   attributes_dict['b'] = b
-   attributes_dict['b2'] = b2
-   attributes_dict['alpha'] = alpha
-   attributes_dict['experiment_id'] = experiment_id
-   attributes_dict['database_connection'] = conn
-   attributes_dict['method'] = method
-   attributes_dict['scen_est_num'] = num_scenerios_per_estimation
-   attributes_dict['beta'] = beta
-   attributes_dict['pessimistic_duration'] = pessimistic_duration
-   attributes_dict['penalty_type'] = penalty_type
-   attributes_dict['m'] = m
-   attributes_dict['b1'] = b1
-   attributes_dict['bootstrap'] = bootstrap
-   attributes_dict['KG_sigma'] = KG_sigma
-   attributes_dict['KG_l'] = KG_l
-   attributes_dict['KG_mu'] = {}
-   attributes_dict['KG_lambda'] = {}
+   attributes = {}
    
+   # Network attributes
+   attributes['network'] = problem['network']
+   attributes['nodes'] = list(problem['network'].nodes)
+   attributes['no_of_nodes'] = problem['network'].number_of_nodes()
+   attributes['no_of_edges'] = problem['network'].number_of_edges()
+   
+   # Time distribution attributes
+   attributes['cov_mat'] = problem['cov_mat']
+   attributes['distributions'] = problem['PERT']['distributions']
+   attributes['optimistic'] = problem['PERT']['optimistic']
+   attributes['most_likely'] = problem['PERT']['most_likely']
+   attributes['pessimistic'] = problem['PERT']['pessimistic']
+   
+   # Crash times & costs
+   attributes['crash_time'] = problem['crash_time']
+   attributes['crash_cost'] = problem['crash_cost']   
+   
+   # Penalty attributes
+   attributes['penalty_type'] = problem['penalty']['type']
+   attributes['m'] = problem['penalty']['m']
+   attributes['b1'] = problem['penalty']['b1']
+   attributes['penalty_steps'] = problem['penalty']['steps']
+   attributes['t_init'] = problem['penalty']['t_init']
+   attributes['t_final'] = problem['penalty']['t_final']   
+   
+   # Method attributes
+   attributes['pool'] = method['pool']
+   attributes['method_type'] = method['type']
+   
+   # Branch & Bound attributes
+   attributes['scen_est_num'] = method['scenarios_per_estimation']
+   attributes['total_scenarios'] = method['total_scenarios']
+   
+   # Bootstrap attributes
+   attributes['bootstrap'] = method['bootstrap']
+   attributes['resamples'] = method['resamples']
+   attributes['confidence'] = method['confidence']
+   
+   # Pareto method attributes
+   attributes['pareto_beta'] = method['pareto_beta']
+   
+   # KG method attributes
+   attributes['KG_sigma'] = method['KG_sigma']
+   attributes['KG_l'] = method['KG_l']
+   attributes['KG_mu'] = {}
+   attributes['KG_lambda'] = {}
+   
+   # Scenario placeholder
+   attributes['scenarios'] = []
+   
+   # Some global definitions
    global KG_leaf_counter   
    KG_leaf_counter = 0
-   
    global COV
-   COV = pd.DataFrame()   
+   COV = pd.DataFrame()
    
-   return attributes_dict
+   return attributes
 
 
 
-def branch_bound_algorithm(attributes_dict):
+
+
+def branch_bound_algorithm(attributes, experiment_id):
    """Stochastic Branch & Bound implementation
    Parameters
    ----------
@@ -91,17 +115,22 @@ def branch_bound_algorithm(attributes_dict):
    """
    global COV
    
-   # Step 0: Problem space initialization
-   total_scenarios = len(attributes_dict['scenarios']) - attributes_dict['scen_est_num'] # We need to leave the padding available to avoid issues # Debug: we will get this number and call the scenario generation later (instead of havin all scenariosn generated)
-   experiment_id = attributes_dict['experiment_id']  # Debug: this comes from the database
-   conn = attributes_dict['database_connection']  # Debug: This is the connection to DB. Maybe we dont want to do this here
-   scen_est_num = attributes_dict['scen_est_num']
+   # Step 0: Scenario space initialization
+   # We need some extra generated scenarios but
+   # we do not want to ocunt them in the total ussage
+   scen_est_num = attributes['scen_est_num']
+   total_scenarios = attributes['total_scenarios'] + 4*scen_est_num
+   attributes['scenarios'] = dynamic_scenarios(attributes['no_of_nodes'], 
+                                               total_scenarios, 
+                                               attributes['cov_mat'], 
+                                               attributes['distributions'])
+   total_scenarios -= 4*scen_est_num
 
    # Step 1: Initialization
    subproblem = {}
    variable_list = []
 
-   for node in attributes_dict['nodes']:
+   for node in attributes['nodes']:
       variable_list.append("x" + str(node))
    
    # Create 1st subproblem
@@ -140,8 +169,8 @@ def branch_bound_algorithm(attributes_dict):
    # from a deep tree and there the beliefs would
    # be used. For the moment we'll have to do 
    # with this.
-   attributes_dict['KG_mu']= {name:0}
-   attributes_dict['KG_lambda'] = {name:1} 
+   attributes['KG_mu']= {name:0}
+   attributes['KG_lambda'] = {name:1} 
 
    # Step 1.2: Partition list of B&B tree
    # leaf sub-problems initialization
@@ -152,8 +181,8 @@ def branch_bound_algorithm(attributes_dict):
    # partitioned a record set
    partitioned_flag = False
 
-   # Debug: Remove level when deleting database
-   level = 0
+   # Iteration counter
+   iteration = 0
 
    # Set start/end index keeping track of
    # how many samples are taken (need to be taken)
@@ -165,7 +194,7 @@ def branch_bound_algorithm(attributes_dict):
    while scenario_end_index <= total_scenarios:
       
       # Step 2: Record set partitioning
-      partitioned_flag = partition_record_set(attributes_dict, partition_list, 
+      partitioned_flag = partition_record_set(attributes, partition_list, 
                                               scenario_start_index, scenario_end_index)
       
       # Update scenario end-points if we spent extra scenarios on partitioning
@@ -174,29 +203,22 @@ def branch_bound_algorithm(attributes_dict):
          scenario_end_index = scenario_start_index + scen_est_num
       
       # Step 3: Bound estimation
-      work_on_subproblems(attributes_dict, partition_list, scenario_start_index, scenario_end_index, level)
+      work_on_subproblems(attributes, partition_list, scenario_start_index, scenario_end_index)
       
       # Update scenario end-points for next iteration
       scenario_start_index = scenario_end_index
       scenario_end_index = scenario_start_index + scen_est_num
+
       
-      # Debug: Remove level when deleting database
-      level = level + 1
-
-      # Inserting Results Details in DB after all subproblems have been solved at each level
-      # Debug: Remove level when deleting database
-      for subproblem in partition_list:
-         c = conn.cursor()
-         try:
-            c.execute("INSERT INTO RESULTS VALUES ({eid}, {tl},'{sc}',{se},{bze},\
-            {bstd},{ns},{tns},'{rd}','{ss}')".format(eid=experiment_id, tl=level, sc=subproblem['constraints'], se=round(subproblem['E'], 3), 
-                                                     bze=round(subproblem.get('Z_E', 0), 3), bstd=round(subproblem.get('Z_std', 0), 3),
-                                                     ns=subproblem['scenarios_done'], tns=subproblem['total_scenarios_done'], 
-                                                     rd=subproblem['recordset'], ss=subproblem['singleton']))
-
-         except sqlite3.IntegrityError:
-            print("Error while inserting into Results table")
-         conn.commit()
+      # Here we'll have code to push the iteration solution into the database.
+      # This will be the table holding the iteration solutions and description
+      #
+      # We use the itration number and experiment_id here
+      #
+      #------------------------------------------------------------------
+      
+      # Increment iteration and loop
+      iteration += 1      
    
    # Get optimal solution (minimal E) among all partitions
    # and get the corresponding variance. If we didn't do 
@@ -215,7 +237,7 @@ def branch_bound_algorithm(attributes_dict):
 
 
 
-def partition_record_set(attributes_dict, partition_list, scenario_start_index, scenario_end_index):
+def partition_record_set(attributes, partition_list, scenario_start_index, scenario_end_index):
    """Partition (split) record set and update bounds on new subproblems
    Parameters
    ----------
@@ -280,7 +302,7 @@ def partition_record_set(attributes_dict, partition_list, scenario_start_index, 
          subproblem2['name'] = increment_lc()
          
          # Mark new singletons
-         if index_of_last_constraint == attributes_dict['no_of_nodes'] - 2:
+         if index_of_last_constraint == attributes['no_of_nodes'] - 2:
             subproblem1['singleton'] = True
             subproblem2['singleton'] = True
          
@@ -293,9 +315,9 @@ def partition_record_set(attributes_dict, partition_list, scenario_start_index, 
          
          # Update COV matrix and beliefs for 
          # extra subproblems in KG
-         if attributes_dict['method'] == 'KG':
-            KG_mu = attributes_dict['KG_mu']
-            KG_lambda = attributes_dict['KG_lambda']
+         if attributes['method_type'] == 'KG':
+            KG_mu = attributes['KG_mu']
+            KG_lambda = attributes['KG_lambda']
             sub_name = subproblem['name']
             sub1_name = subproblem1['name']
             sub2_name = subproblem2['name']
@@ -327,7 +349,7 @@ def partition_record_set(attributes_dict, partition_list, scenario_start_index, 
             # Update with exponential kernel values
             # for the two new rows and columns and find
             # nearest covariance matrix
-            update_row_col(subproblem1, subproblem2, partition_list, attributes_dict)
+            update_row_col(subproblem1, subproblem2, partition_list, attributes)
             
             # **********COV UPDATING FINISHED**********
          
@@ -336,12 +358,12 @@ def partition_record_set(attributes_dict, partition_list, scenario_start_index, 
          # Estimate bounds by taking full sample scenarios
          # at each new leaf. This step also takes care of 
          # priming the KG sample statistics.
-         scen_est_num = attributes_dict['scen_est_num']
-         estimate_bounds(attributes_dict, subproblem1,
-                         attributes_dict['scenarios'][scenario_start_index : 
+         scen_est_num = attributes['scen_est_num']
+         estimate_bounds(attributes, subproblem1,
+                         attributes['scenarios'][scenario_start_index : 
                                                       scenario_start_index + scen_est_num])
-         estimate_bounds(attributes_dict, subproblem2, 
-                         attributes_dict['scenarios'][scenario_start_index + scen_est_num : 
+         estimate_bounds(attributes, subproblem2, 
+                         attributes['scenarios'][scenario_start_index + scen_est_num : 
                                                       scenario_start_index + 2*scen_est_num])         
          
          just_partitioned = True
@@ -356,7 +378,7 @@ def partition_record_set(attributes_dict, partition_list, scenario_start_index, 
 
 
 
-def work_on_subproblems(attributes_dict, partition_list, scenario_start_index, scenario_end_index, level):
+def work_on_subproblems(attributes, partition_list, scenario_start_index, scenario_end_index):
    """Obtains assigned scenarios per subproblem (possibly empty) and calls the bounding method
    Parameters
    ----------
@@ -366,21 +388,21 @@ def work_on_subproblems(attributes_dict, partition_list, scenario_start_index, s
    ----------
    N/A
    """
-   total_scenarios = attributes_dict['scenarios'][scenario_start_index:scenario_end_index]
+   total_scenarios = attributes['scenarios'][scenario_start_index:scenario_end_index]
    assigned_scenarios = []
    
    # Assign to each subproblem the scenarios used to 
    # update bounds.   
-   if (attributes_dict['method']=="Random" or attributes_dict['method']=="Random_1" 
-       or attributes_dict['method']=="Distance"):
-      assigned_scenarios = assign_scenarios(partition_list, total_scenarios, attributes_dict['method'])
+   if (attributes['method_type']=="Random" or attributes['method_type']=="Random_1" 
+       or attributes['method_type']=="Distance"):
+      assigned_scenarios = assign_scenarios(partition_list, total_scenarios, attributes['method_type'])
       
-   if attributes_dict['method']=="Pareto_Inverse" or attributes_dict['method']=="Pareto_Boltzman":
-      assigned_scenarios = assign_scenarios_pareto(partition_list, total_scenarios, attributes_dict['beta'], 
-                                                       attributes_dict['method'])
+   if attributes['method_type']=="Pareto_Inverse" or attributes['method_type']=="Pareto_Boltzman":
+      assigned_scenarios = assign_scenarios_pareto(partition_list, total_scenarios, attributes['pareto_beta'], 
+                                                       attributes['method_type'])
    
-   if attributes_dict['method']=="KG":
-      assigned_scenarios = assign_scenarios_KG(partition_list, total_scenarios, attributes_dict)
+   if attributes['method_type']=="KG":
+      assigned_scenarios = assign_scenarios_KG(partition_list, total_scenarios, attributes)
      
    # List to hold newly obtained subproblem results
    min_obj_val = []
@@ -390,7 +412,7 @@ def work_on_subproblems(attributes_dict, partition_list, scenario_start_index, s
       
       # No need to assign scenarios in case of Uniform since 
       # every subproblem will get assigned ALL scenarios.      
-      if attributes_dict['method'] == "Uniform":
+      if attributes['method_type'] == "Uniform":
          scenarios = total_scenarios
          
       else:
@@ -398,7 +420,7 @@ def work_on_subproblems(attributes_dict, partition_list, scenario_start_index, s
       
       if len(scenarios) != 0:
          # Update bounds by solving optimization problems for each scenario
-         min_obj_val.append(estimate_bounds(attributes_dict, subproblem, scenarios))
+         min_obj_val.append(estimate_bounds(attributes, subproblem, scenarios))
          
       else:
          # If no scenarios get allocated then copy the 
@@ -413,7 +435,7 @@ def work_on_subproblems(attributes_dict, partition_list, scenario_start_index, s
 
 
 
-def estimate_bounds(attributes_dict, subproblem, scenarios):
+def estimate_bounds(attributes, subproblem, scenarios):
    """Calls solver on a given subproblem for all scenarios and calculate E, Z_E and Z_std
    Parameters. Also makes the individual subproblem E and STD updates under the KG method.
    ----------   
@@ -427,7 +449,7 @@ def estimate_bounds(attributes_dict, subproblem, scenarios):
    """
    global COV
    
-   scenario_solutions = multisolve_scenarios(attributes_dict, subproblem, scenarios)
+   scenario_solutions = multisolve_scenarios(attributes, subproblem, scenarios)
    
    # Obtain all scenario solutions and add to subproblem
    sample_solutions = []
@@ -436,8 +458,8 @@ def estimate_bounds(attributes_dict, subproblem, scenarios):
    subproblem['sample_solutions']+=sample_solutions
 
    # Compute bootstrap statistics if required
-   if attributes_dict['bootstrap'] == True:
-      subproblem['Z_E'], subproblem['Z_std'] = bootstrap_E_STD(subproblem, attributes_dict)
+   if attributes['bootstrap'] == True:
+      subproblem['Z_E'], subproblem['Z_std'] = bootstrap_E_STD(subproblem, attributes)
       # Update mean and std from boostrap
       subproblem['E'] = E_obj_value = subproblem['Z_E']
       subproblem['STD'] = std_obj_function_value = subproblem['Z_std']
@@ -455,24 +477,24 @@ def estimate_bounds(attributes_dict, subproblem, scenarios):
    subproblem['scenarios_done'] = len(scenarios)
    
    #  Update the KG sample & Belief statistics
-   if attributes_dict['method'] == 'KG':
+   if attributes['method_type'] == 'KG':
       # First the sample statistics:
       subproblem['KG_sample_sol'].append(np.mean(sample_solutions))
       # Apply KG-bootstrap
-      if attributes_dict['bootstrap'] == True:
-         subproblem['KG_E'], subproblem['KG_std'] = bootstrap_KG(subproblem, attributes_dict, sample_solutions)
+      if attributes['bootstrap'] == True:
+         subproblem['KG_E'], subproblem['KG_std'] = bootstrap_KG(subproblem, attributes, sample_solutions)
       else:
          subproblem['KG_E'] = np.mean(sample_solutions)
          subproblem['KG_std'] = np.std(sample_solutions) 
       
       # Now update the belief statistics:
       # First setup the vectors and matrices we need
-      mu_n = np.fromiter(attributes_dict['KG_mu'].values(), dtype=float)
+      mu_n = np.fromiter(attributes['KG_mu'].values(), dtype=float)
       S_n = COV.to_numpy(dtype=float, copy=False)
-      lambda_ = np.fromiter(attributes_dict['KG_lambda'].values(), dtype=float)
+      lambda_ = np.fromiter(attributes['KG_lambda'].values(), dtype=float)
       y_n1 = subproblem['KG_E']
       
-      idx = list(attributes_dict['KG_lambda'].keys())
+      idx = list(attributes['KG_lambda'].keys())
       x = idx.index(subproblem['name'])
       
       # Now, do the operation and make sure COV and
@@ -490,15 +512,15 @@ def estimate_bounds(attributes_dict, subproblem, scenarios):
             ##print("Non positive semidefinite matrix M")   
             #raise Exception("Non positive semidefinite matrix M")      
       
-      idx = sorted(list(attributes_dict['KG_mu'].keys()))
+      idx = sorted(list(attributes['KG_mu'].keys()))
       for i in range(len(idx)):
-         attributes_dict['KG_mu'][idx[i]] = mu_n1[i][0]
+         attributes['KG_mu'][idx[i]] = mu_n1[i][0]
       
    return E_obj_value
 
 
 
-def multisolve_scenarios(attributes_dict, subproblem, scenarios):
+def multisolve_scenarios(attributes, subproblem, scenarios):
    """Solves optimization problem for every scenario applied to the given subproblem
    Parameters
    ----------
@@ -509,41 +531,41 @@ def multisolve_scenarios(attributes_dict, subproblem, scenarios):
    k : list
    """
 
-   k = attributes_dict['pool'].map(partial(optimize_subproblem,
-                                 attributes_dict['project_network'],
-                                 attributes_dict['crashtime'],
-                                 attributes_dict['crashcost'],
+   k = attributes['pool'].map(partial(optimize_subproblem,
+                                 attributes['network'],
+                                 attributes['crash_time'],
+                                 attributes['crash_cost'],
                                  subproblem,
-                                 attributes_dict['t_init'],
-                                 attributes_dict['t_final'],
-                                 attributes_dict['outlocation'],
-                                 attributes_dict['pessimistic_duration'],
-                                 attributes_dict['penalty_type'],
-                                 attributes_dict['m'],
-                                 attributes_dict['b1'],),
+                                 attributes['t_init'],
+                                 attributes['t_final'],
+                                 attributes['pessimistic'],
+                                 attributes['penalty_type'],
+                                 attributes['m'],
+                                 attributes['b1'],
+                                 attributes['penalty_steps']),
                            scenarios)
 
    # Debug single threaded code
    #k=[]
    #for scenario in scenarios:
-      #k.append(optimize_subproblem(attributes_dict['project_network'],
-                                     #attributes_dict['crashtime'],
-                                                   #attributes_dict['crashcost'],
-                                                   #subproblem,
-                                                   #attributes_dict['t_init'],
-                                                   #attributes_dict['t_final'],
-                                                   #attributes_dict['outlocation'],
-                                                   #attributes_dict['pessimistic_duration'],
-                                                   #attributes_dict['penalty_type'],
-                                                   #attributes_dict['m'],
-                                                   #attributes_dict['b1'],
-                                                   #scenario))
+      #k.append(optimize_subproblem(attributes['network'], 
+                                   #attributes['crash_time'],
+                                   #attributes['crash_cost'],
+                                   #subproblem,
+                                   #attributes['t_init'],
+                                   #attributes['t_final'],
+                                   #attributes['pessimistic'],
+                                   #attributes['penalty_type'],
+                                   #attributes['m'],
+                                   #attributes['b1'],
+                                   #attributes['penalty_steps'],
+                                   #scenario))
 
    return k
 
 
 
-def bootstrap_E_STD(subproblem, attributes_dict):
+def bootstrap_E_STD(subproblem, attributes):
    """Evaluates a variance-reduction bootstrap method
    Parameters
    ----------
@@ -559,8 +581,8 @@ def bootstrap_E_STD(subproblem, attributes_dict):
    # Get the samples from subproblem
    subproblem_sample_sol = np.array(subproblem['sample_solutions'])
    
-   b = attributes_dict['b']
-   alpha = attributes_dict['alpha']
+   b = attributes['resamples']
+   alpha = attributes['confidence']
    
    # Use bootstrap to approximate mean
    boost_mean_dist = bs.bootstrap(values=subproblem_sample_sol, stat_func=bs_stats.mean,
@@ -576,7 +598,7 @@ def bootstrap_E_STD(subproblem, attributes_dict):
 
 
 
-def bootstrap_KG(subproblem, attributes_dict, sample_solutions):
+def bootstrap_KG(subproblem, attributes, sample_solutions):
    """Evaluates bootstrap for KG samples
    Parameters
    ----------
@@ -593,8 +615,8 @@ def bootstrap_KG(subproblem, attributes_dict, sample_solutions):
    #KG_sample_sol = np.array(subproblem['KG_sample_sol'])
    KG_sample_sol = np.array(sample_solutions)
    
-   b = attributes_dict['b']
-   alpha = attributes_dict['alpha']
+   b = attributes['resamples']
+   alpha = attributes['confidence']
    
    # Use bootstrap to approximate mean
    boost_mean_dist = bs.bootstrap(values=KG_sample_sol, stat_func=bs_stats.mean,
@@ -650,7 +672,7 @@ def assign_scenarios(partition_list, total_scenarios, method):
 
 
 
-def assign_scenarios_KG(partition_list, total_scenarios, attributes_dict):
+def assign_scenarios_KG(partition_list, total_scenarios, attributes):
    """Computes and assigns scenarios to nodes of partition_list on KG method Parameter
    ----------
    ...
@@ -667,13 +689,13 @@ def assign_scenarios_KG(partition_list, total_scenarios, attributes_dict):
    
    # Call KG algorith to select next index to sample
    S = COV.to_numpy(dtype=float)
-   mu = np.fromiter(attributes_dict['KG_mu'].values(), dtype=float)
-   lambda_ = np.fromiter(attributes_dict['KG_lambda'].values(), dtype=float)
+   mu = np.fromiter(attributes['KG_mu'].values(), dtype=float)
+   lambda_ = np.fromiter(attributes['KG_lambda'].values(), dtype=float)
    
-   L = KG_multi(mu, S, lambda_, attributes_dict['pool'])
+   L = KG_multi(mu, S, lambda_, attributes['pool'])
    
    # Convert solution to selected subproblem name
-   selected_name = sorted(list(attributes_dict['KG_mu'].keys()))[L[0]]
+   selected_name = sorted(list(attributes['KG_mu'].keys()))[L[0]]
    
    ## Assign all scenarios to the selected index
    #assigned_scenarios = np.array([selected_name] * scenarios_length)
@@ -817,15 +839,15 @@ def pareto_fronts_probabilities(partition_list, beta, probability_method):
 
 
 
-def update_row_col(subproblem1, subproblem2, partition_list, attributes_dict):
+def update_row_col(subproblem1, subproblem2, partition_list, attributes):
    """Updates the last two rows and columns of COV with the exponential kernel values 
    of the string distances of the corresponding subproblem constraints and finds the
    nearest covariance matrix
    """
    global COV
    
-   sigma = attributes_dict['KG_sigma']
-   l = attributes_dict['KG_l']
+   sigma = attributes['KG_sigma']
+   l = attributes['KG_l']
    s1_const = subproblem1['constraints']
    s2_const = subproblem2['constraints']
    

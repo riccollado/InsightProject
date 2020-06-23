@@ -3,7 +3,7 @@ import numpy as np
 import random
 
 
-def generate_corr_mat(size):
+def generate_cov_mat(size):
     """ Generates a random size x size  correlation matrix
     
     Parameters
@@ -29,7 +29,7 @@ def generate_corr_mat(size):
     A = nearcorr(P,
                  tol=[],
                  flag=0, 
-                 max_iterations=10000,
+                 max_iterations=50000,
                  n_pos_eig=0,
                  weights=None,
                  verbose=False,

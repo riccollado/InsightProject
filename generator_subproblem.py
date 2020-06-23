@@ -3,18 +3,9 @@ from generator_penalty import generate_penalty_vals_linear
 from generator_penalty import generate_penalty_vals_exponential
 
 
-def optimize_subproblem(project_network,
-                        crashtime,
-                        crashcost,
-                        subproblem,
-                        t_init,
-                        t_final,
-                        outlocation,
-                        pessimistic_duration,
-                        penalty_type,
-                        m,
-                        b1,
-                        scenario):
+def optimize_subproblem(network, crash_time, crash_cost, subproblem, 
+                        t_init, t_final, pessimistic, penalty_type,
+                        m, b1, penalty_steps, scenario):
     """Defines and solve an intermediate optimization problem where some variables are fixed
     
     Parameters
@@ -43,7 +34,7 @@ def optimize_subproblem(project_network,
     outlocation : str
        Name of output files folder
     
-    pessimistic_duration : list
+    pessimistic : list
        Duration of pessimistic values of activities
     
     penalty_type : str
@@ -69,10 +60,9 @@ def optimize_subproblem(project_network,
     """
     
     # Get number of nodes
-    no_of_nodes = project_network.number_of_nodes()
+    no_of_nodes = network.number_of_nodes()
     
     # Defnite intervals of penalty step function
-    penalty_steps = 20.0
     d = (t_final - t_init) / penalty_steps
     t = [t_init+(j*d) for j in range(int(penalty_steps)+1)]
     
@@ -113,11 +103,11 @@ def optimize_subproblem(project_network,
     
     # Network flow model constraints
     flow_constr = {}
-    for node in project_network.nodes:
-        successors = project_network.successors(node)
+    for node in network.nodes:
+        successors = network.successors(node)
         for succ in successors:
             flow_constr[(node, succ)] = model.addConstr(
-                s[succ] >= s[node] + scenario[node] -  x[node]*crashtime[node]*scenario[node],
+                s[succ] >= s[node] + scenario[node] -  x[node]*crash_time[node]*scenario[node],
                 name="flow_constr"+str(succ))
     
      # Penalty costs
@@ -127,7 +117,7 @@ def optimize_subproblem(project_network,
         Lambda = generate_penalty_vals_exponential(t, m, b1)
     
     # BigM calculation
-    BigM = 4*sum(pessimistic_duration)
+    BigM = 4*sum(pessimistic)
     
     # Penalty-related constraints
     penalty_minus_constr = {}
@@ -138,17 +128,11 @@ def optimize_subproblem(project_network,
     
     # Objective function
     model.setObjective(
-        gp.quicksum(Lambda[i]*z[i] for i in range(1, int(penalty_steps)+1)) + gp.quicksum(x[i]*crashcost[i] for i in range(no_of_nodes)),
+        gp.quicksum(Lambda[i]*z[i] for i in range(1, int(penalty_steps)+1)) + gp.quicksum(x[i]*crash_cost[i] for i in range(no_of_nodes)),
         gp.GRB.MINIMIZE)
-
-    # Debug
-    # model.write(outlocation+"model.lp")
 
     # Solve the model
     model.optimize()
-
-    # Debug
-    # model.write(outlocation+"solution.sol")
 
     # Dictionary to return model solution
     scenariodetailslog = {}

@@ -1,10 +1,8 @@
 import numpy as np
 import random
-import pickle
-from uncrashed_bounds import uncrashed_project_time
 from scipy.stats import beta
 
-def generate_betas(project_network, geom_prob, out_location):
+def generate_PERT(geom_prob):
     """Generates beta distributions for activity times
     
     Parameters
@@ -69,43 +67,26 @@ def generate_betas(project_network, geom_prob, out_location):
         m = ml_value
         b = p_value
         
-        # Calculating alpha and beta from PERT (Priyanka's Approx)
+        # Calculating alpha and beta from PERT
         alpha = 1 + 4*(m-a)/(b-a)
         bet = 1 + 4*(b-m)/(b-a)
         
         # Calculate pert beta distribution using alpha and bet
         distributions[key] = beta(alpha, bet, loc=a, scale=b - a)
         
-    # # Activity duration of start node is zero
+    # Activity duration of end node is zero
     optimistic_duration.append(0)
     most_likely_duration.append(0)
     pessimistic_duration.append(0)
     
-    # Obtain t_init and t_final for calculation of objective
-    # penalty function. This is done by solving the main problem
-    # without crashing with most likely and pesimistic scenarios.
-    # In this way we approximate 'normal-time' and 'worst-time'
-    # it takes to perform the project. We use this to establish 
-    # boundaries for the penalty function.
-    t_init , _  = uncrashed_project_time(project_network, most_likely_duration, out_location)
-    t_final, _  = uncrashed_project_time(project_network, pessimistic_duration, out_location)
-    
-    
-    # Save generated scenarios in a file
-    file_name = out_location + "penalty_values" + '.pkl'
-    output_file = open(file_name, 'wb+')
-    pickle.dump(optimistic_duration, output_file)
-    pickle.dump(most_likely_duration, output_file)
-    pickle.dump(pessimistic_duration, output_file)
-    pickle.dump(t_init, output_file)
-    pickle.dump(t_final, output_file)
-    output_file.close()
-    
-    return distributions
+    return {'distributions':distributions, 
+            'optimistic':optimistic_duration,
+            'most_likely':most_likely_duration,
+            'pessimistic':pessimistic_duration}
 
 
 
-def generate_geometrics(no_of_nodes, out_location):
+def generate_geometric(no_of_nodes):
     """Generates probabilities for geometric distributions used to select the projects betas
     
     Parameters
@@ -124,11 +105,5 @@ def generate_geometrics(no_of_nodes, out_location):
     for i in range(1, no_of_nodes + 1):
         value = random.uniform(0, 1)
         geom_prob[i] = value
-    
-    # Save generated scenarios in a file
-    file_name = out_location + "geometric_values" + '.pkl'
-    output_file = open(file_name, 'wb+')
-    pickle.dump(geom_prob, output_file)
-    output_file.close()
     
     return geom_prob

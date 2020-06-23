@@ -21,3 +21,4 @@ def covariance_from_correlation(correlation, v):
    outer_v = np.outer(v, v)
    covariance = correlation * outer_v
    return covariance
+

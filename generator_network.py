@@ -1,4 +1,4 @@
-import pickle
+import io
 import random
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -71,7 +71,7 @@ def network_skeleton(num_nodes, num_layers):
 
 
 
-def generate_network(num_nodes, num_layers, out_location, out_name, density=0.4):
+def generate_network(num_nodes, num_layers, density):
    """Generates a connected network graph
 
    Parameters
@@ -96,6 +96,9 @@ def generate_network(num_nodes, num_layers, out_location, out_name, density=0.4)
    G = nx.DiGraph()
    G.add_nodes_from(nodes)
    G.add_edges_from(edges)
+   
+   # Obtain pyplot layout from skeleton graph
+   pos = nx.nx_pydot.pydot_layout(G, prog='dot')
 
    # Generate possible edges to add
    nodes = sorted(G.nodes())
@@ -116,16 +119,11 @@ def generate_network(num_nodes, num_layers, out_location, out_name, density=0.4)
    # Add new edges
    G.add_edges_from(random.sample(pairs,n))    
 
-   # Save generated graph with transmission nodes and arcs to file
-   file_name = out_location + out_name + '.pkl'
-   output_file = open(file_name, 'wb+')
-   pickle.dump(G, output_file)
-   plt.close()
-   output_file.close()
+   # Plot figure to io stream
+   figure = io.BytesIO()
+   nx.draw(G, pos, with_labels=False, arrows=True, 
+           node_size=40, node_color='r', alpha=0.7,width=0.4)
+   plt.savefig(figure,format='pdf')
+   #plt.show()  
 
-   ## Plot the graph
-   #pos = nx.nx_pydot.graphviz_layout(G, prog='dot')
-   #nx.draw(G, pos, with_labels=True, arrows=False)
-   #plt.show()    
-
-   return G
+   return G, figure, pos

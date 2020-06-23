@@ -3,9 +3,9 @@ import multiprocessing as mp
 from nearest_correlation import nearcorr
 from scipy.stats import random_correlation
 
-from KG import KG_Alg
-from KG import KG_multi
-from KG import update_mu_S
+from knowledge_gradient import KG_Alg
+from knowledge_gradient import KG_multi
+from knowledge_gradient import update_mu_S
 
 if __name__ == "__main__":
    processes = mp.cpu_count()
