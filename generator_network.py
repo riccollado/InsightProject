@@ -119,11 +119,13 @@ def generate_network(num_nodes, num_layers, density):
    # Add new edges
    G.add_edges_from(random.sample(pairs,n))    
 
-   # Plot figure to io stream
+   # Plot figure to io stream and store binary values
    figure = io.BytesIO()
    nx.draw(G, pos, with_labels=False, arrows=True, 
            node_size=40, node_color='r', alpha=0.7,width=0.4)
    plt.savefig(figure,format='pdf')
+   binary_figure = figure.getvalue()
+   figure.close()
    #plt.show()  
 
-   return G, figure, pos
+   return G, binary_figure, pos

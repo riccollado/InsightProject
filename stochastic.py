@@ -1,3 +1,4 @@
+import time
 import math
 #import utilities
 import pygmo as pg
@@ -46,6 +47,10 @@ def initialize_attributes(problem, method):
    attributes['nodes'] = list(problem['network'].nodes)
    attributes['no_of_nodes'] = problem['network'].number_of_nodes()
    attributes['no_of_edges'] = problem['network'].number_of_edges()
+   
+   #Network Figure
+   attributes['binary_figure'] = problem['network_figure']
+   attributes['pos_figure'] = problem['network_pos']
    
    # Time distribution attributes
    attributes['cov_mat'] = problem['cov_mat']
@@ -103,7 +108,7 @@ def initialize_attributes(problem, method):
 
 
 
-def branch_bound_algorithm(attributes, experiment_id):
+def branch_bound_algorithm(attributes, push_iteration):
    """Stochastic Branch & Bound implementation
    Parameters
    ----------
@@ -182,7 +187,7 @@ def branch_bound_algorithm(attributes, experiment_id):
    partitioned_flag = False
 
    # Iteration counter
-   iteration = 0
+   iteration = 1
 
    # Set start/end index keeping track of
    # how many samples are taken (need to be taken)
@@ -192,6 +197,7 @@ def branch_bound_algorithm(attributes, experiment_id):
    # Main recursive loop: Iterate over the 
    # total number of scenarions.
    while scenario_end_index <= total_scenarios:
+      start_iter_time = time.clock()
       
       # Step 2: Record set partitioning
       partitioned_flag = partition_record_set(attributes, partition_list, 
@@ -209,29 +215,24 @@ def branch_bound_algorithm(attributes, experiment_id):
       scenario_start_index = scenario_end_index
       scenario_end_index = scenario_start_index + scen_est_num
 
-      
-      # Here we'll have code to push the iteration solution into the database.
-      # This will be the table holding the iteration solutions and description
-      #
-      # We use the itration number and experiment_id here
-      #
-      #------------------------------------------------------------------
+      # Push iteration results in DB
+      elapsed_iter_time = time.clock() - start_iter_time
+      push_iteration(COV, partition_list, attributes, iteration, elapsed_iter_time )
       
       # Increment iteration and loop
       iteration += 1      
    
    # Get optimal solution (minimal E) among all partitions
    # and get the corresponding variance. If we didn't do 
-   # bootstrap, the variace values are meaningless.
+   # bootstrap, the variace values are not so useful.
    return_data={}
-   
    E_data = [partition_list[i]['E'] for i in range(len(partition_list))]
    return_data['E_solution'] = np.min(E_data)
    return_data['E_data'] = E_data
-   
+   return_data['Partial_sol'] = partition_list[E_data.index(min(E_data))]['constraints']
    Std_data = [partition_list[i]['Z_std'] for i in range(len(partition_list))]
    return_data['Std_data'] = Std_data
-   return_data['Std_sol'] = Std_data[E_data.index(return_data['E_solution'])]   
+   return_data['Std_sol'] = Std_data[E_data.index(return_data['E_solution'])]
    
    return return_data
 

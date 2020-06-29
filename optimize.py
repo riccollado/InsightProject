@@ -1,5 +1,6 @@
 import time
 import stochastic
+from db_driver import initialize_db
 
 def optimize(problem, method, seeds=None):
     """
@@ -15,32 +16,24 @@ def optimize(problem, method, seeds=None):
     ----------
     N/A
     """
+    
+    # Initialize db and get db_driver methods
+    push_experiment, push_iteration, update_exp_time, push_solution_db, close_db = initialize_db()
 
-    # Initialize attributes
+    # Initialize attributes & push experimnt to db
     attributes = stochastic.initialize_attributes(problem, method)
-    
-    # Here we'll have code to push the attributes into the database.
-    # This will be the table holding the problem description.
-    #
-    # From tis we get experiment_id
-    #
-    #
-    #
-    #------------------------------------------------------------------
-    
-    #DEBUG: we will get this from the database
-    experiment_id = 0
+    experiment_id = push_experiment(seeds, attributes)
     
     # Run SB&B algorithm
     start_time = time.clock()
-    solution = stochastic.branch_bound_algorithm(attributes, experiment_id)
+    solution = stochastic.branch_bound_algorithm(attributes, push_iteration)
     elapsed_time = time.clock() - start_time
+    update_exp_time(elapsed_time)
     
-    # Here we'll have code to push the solution into the database.
-    # This will be the table holding the problem solution
-    #
-    #
-    #
-    #------------------------------------------------------------------    
+    # Push solution to database
+    push_solution_db(solution)
+    
+    # Close the database session
+    close_db()
 
-    return
+    return experiment_id, elapsed_time, solution

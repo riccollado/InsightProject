@@ -1,4 +1,8 @@
+import os
+import platform
 import random
+from pyfiglet import Figlet
+
 import numpy as np
 import multiprocessing as mp
 from optimize import optimize
@@ -16,7 +20,7 @@ if __name__ == "__main__":
    processes = mp.cpu_count()
    pool = mp.Pool(int(processes*3/4))
    
-   # Fix seeds
+   # Set seeds
    seed1 = 281323
    seed2 = 945672 
    seeds = [seed1, seed2]
@@ -85,7 +89,22 @@ if __name__ == "__main__":
    #----------------------------------------------------------
    # Solve problem
    #----------------------------------------------------------   
-   optimize(problem, method, seeds)
+   experiment_id, elapsed_time, solution = optimize(problem, method, seeds)
    
+   #----------------------------------------------------------
+   # Output solution to screen
+   #---------------------------------------------------------- 
+   if platform.system() == 'Windows':
+      os.system('cls')
+   else:
+      os.system('clear')
+   
+   print(Figlet(font='big').renderText('Crashing Cost'))
+   
+   print("Experiment ID: {}".format(experiment_id))
+   print("Elapsed time: {:.2f} sec".format(elapsed_time))
+   print("Expected cost: {:.2f}".format(solution['E_solution']))
+   print("Standard deviation: {:.2f}".format(solution['Std_sol']))
+   print("\n\n")
    
   
